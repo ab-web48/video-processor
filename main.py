@@ -5,15 +5,9 @@ import random
 from moviepy.editor import VideoFileClip
 import yt_dlp
 import dropbox
-from fastapi.staticfiles import StaticFiles
+from dropbox.files import WriteMode
 
 app = FastAPI()
-
-# Initialize Dropbox client (reads from Render environment variable)
-DROPBOX_TOKEN = os.getenv("DROPBOX_TOKEN")
-dbx = dropbox.Dropbox(DROPBOX_TOKEN) if DROPBOX_TOKEN else None
-
-app.mount("/downloads", StaticFiles(directory="downloads"), name="downloads")
 
 @app.get("/")
 def root():
@@ -29,7 +23,10 @@ async def process_video(request: Request):
     print(f"Downloading video from: {file_url}")
 
     try:
+        # Make folders
         os.makedirs("downloads", exist_ok=True)
+
+        # Download video
         ydl_opts = {
             'outtmpl': f'downloads/{job_id}.mp4',
             'quiet': True,
@@ -41,31 +38,43 @@ async def process_video(request: Request):
         input_path = f"downloads/{job_id}.mp4"
         print(f"✅ Downloaded: {input_path}")
 
+        # Cut random clips
         video = VideoFileClip(input_path)
         duration = video.duration
         os.makedirs(f"downloads/{job_id}_clips", exist_ok=True)
 
         clip_paths = []
-        dropbox_links = []
-
-        for i in range(3):
+        for i in range(3):  # fewer clips for speed
             start = random.uniform(0, max(1, duration - 5))
             end = min(duration, start + random.uniform(2, 4))
             clip = video.subclip(start, end)
             clip_path = f"downloads/{job_id}_clips/clip_{i+1}.mp4"
-            clip.write_videofile(clip_path, codec="libx264", audio_codec="aac", verbose=False, logger=None)
+            clip.write_videofile(
+                clip_path, codec="libx264", audio_codec="aac", verbose=False, logger=None
+            )
             clip_paths.append(clip_path)
 
-            # Upload to Dropbox if configured
-            if dbx:
-                dropbox_dest = f"/video_clips/{os.path.basename(clip_path)}"
-                with open(clip_path, "rb") as f:
-                    dbx.files_upload(f.read(), dropbox_dest, mode=dropbox.files.WriteMode("overwrite"))
-                shared_link = dbx.sharing_create_shared_link_with_settings(dropbox_dest).url
-                dropbox_links.append(shared_link)
+        print(f"✅ Created {len(clip_paths)} clips for {job_id}")
 
-        print(f"✅ Finished {len(clip_paths)} clips for {job_id}")
-        return {"status": "completed", "dropbox_links": dropbox_links}
+        # Upload to Dropbox
+        access_token = os.getenv("DROPBOX_ACCESS_TOKEN")
+        if not access_token:
+            raise Exception("DROPBOX_ACCESS_TOKEN is missing! Add it in Render Environment tab.")
+
+        dbx = dropbox.Dropbox(access_token)
+        uploaded_links = []
+
+        for clip_path in clip_paths:
+            dropbox_path = f"/video_clips/{os.path.basename(clip_path)}"
+            with open(clip_path, "rb") as f:
+                dbx.files_upload(f.read(), dropbox_path, mode=WriteMode("overwrite"))
+            shared_link = dbx.sharing_create_shared_link_with_settings(dropbox_path).url
+            uploaded_links.append(shared_link)
+            print(f"✅ Uploaded to Dropbox: {shared_link}")
+
+        print("🎉 All clips uploaded successfully!")
+
+        return {"status": "completed", "job_id": job_id, "links": uploaded_links}
 
     except Exception as e:
         print("❌ Error:", e)
