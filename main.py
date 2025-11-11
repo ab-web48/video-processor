@@ -4,8 +4,12 @@ import os
 import random
 from moviepy.editor import VideoFileClip
 import yt_dlp
+from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
+
+# Serve the downloads folder as a public directory
+app.mount("/downloads", StaticFiles(directory="downloads"), name="downloads")
 
 @app.get("/")
 def root():
@@ -58,7 +62,4 @@ async def process_video(request: Request):
     except Exception as e:
         print("❌ Error:", e)
         return {"status": "error", "message": str(e)}
-from fastapi.staticfiles import StaticFiles
 
-# Serve the downloads folder as a public directory
-app.mount("/downloads", StaticFiles(directory="downloads"), name="downloads")
