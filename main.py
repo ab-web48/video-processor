@@ -49,3 +49,13 @@ async def process_video(request: Request):
             clip = video.subclip(start, end)
             clip_path = f"downloads/{job_id}_clips/clip_{i+1}.mp4"
             clip.write_videofile(clip_path, codec="libx264", audio_codec="aac", verbose=False, logger=None)
+            clip_paths.append(clip_path)
+
+        print(f"✅ Created {len(clip_paths)} clips for job {job_id}")
+        video.close()
+
+        return {"status": "completed", "job_id": job_id, "clips": clip_paths}
+
+    except Exception as e:
+        print(f"❌ Error processing video: {e}")
+        return {"status": "error", "message": str(e)}
