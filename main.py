@@ -58,3 +58,7 @@ async def process_video(request: Request):
     except Exception as e:
         print("❌ Error:", e)
         return {"status": "error", "message": str(e)}
+from fastapi.staticfiles import StaticFiles
+
+# Serve the downloads folder as a public directory
+app.mount("/downloads", StaticFiles(directory="downloads"), name="downloads")
